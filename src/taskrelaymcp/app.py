@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
         yield
 
 
-app = FastAPI(title="TaskRelay", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="TaskRelay", version="0.2.0", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -39,6 +39,12 @@ def health() -> dict[str, str]:
 
 app.include_router(router)
 app.mount("/mcp", mcp_app, name="mcp")
+
+
+@app.get("/api/{path:path}", include_in_schema=False)
+def missing_api(path: str) -> JSONResponse:
+    return JSONResponse({"detail": "Not Found"}, status_code=404)
+
 
 dist = Path(__file__).parent / "static"
 if dist.exists():

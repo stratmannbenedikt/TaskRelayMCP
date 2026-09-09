@@ -1,6 +1,6 @@
 [project]
 name = "taskrelaymcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "A small shared task workspace for humans and MCP agents"
 readme = "README.md"
 authors = [
@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.19.2",
     "fastapi>=0.116,<1",
     "fastmcp>=4.0.3",
     "sqlalchemy>=2.0,<3",

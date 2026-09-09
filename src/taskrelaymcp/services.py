@@ -14,6 +14,10 @@ class NotFound(ValueError):
     pass
 
 
+class Conflict(ValueError):
+    pass
+
+
 def project_by_key(session: Session, key: str) -> Project:
     project = session.scalar(select(Project).where(Project.key == key))
     if not project:
@@ -65,7 +69,7 @@ def normalize_legacy_statuses(session: Session) -> None:
     )
 
 
-def list_project_summaries(session: Session) -> list[dict]:
+def list_project_summaries(session: Session, include_archived: bool = False) -> list[dict]:
     normalize_legacy_statuses(session)
     last_activity = func.coalesce(func.max(Task.updated_at), Project.created_at)
     statement = (
@@ -79,6 +83,8 @@ def list_project_summaries(session: Session) -> list[dict]:
         .group_by(Project.id)
         .order_by(last_activity.desc())
     )
+    if not include_archived:
+        statement = statement.where(Project.archived.is_(False))
     return [
         {
             "id": project.id,
@@ -125,18 +131,15 @@ def create_task(session: Session, data: TaskCreate, actor: str, forced_origin: s
 
 
 def patch_task(session: Session, task: Task, data: TaskPatch, actor: str) -> Task:
+    if task.status == Status.DONE:
+        raise Conflict("Completed tasks are immutable; create a follow-up task")
     changes = data.model_dump(exclude_unset=True)
     if "target_project" in changes:
         task.target_project = project_by_key(session, changes.pop("target_project"))
     if "tags" in changes:
         task.tags = _tag_objects(session, changes.pop("tags") or [])
-    previous_status = task.status
     for key, value in changes.items():
         setattr(task, key, value)
-    if task.status == Status.DONE and previous_status != Status.DONE:
-        task.completed_at = datetime.now(UTC)
-    elif task.status != Status.DONE:
-        task.completed_at = None
     session.flush()
     session.add(
         TaskEvent(
@@ -150,14 +153,9 @@ def patch_task(session: Session, task: Task, data: TaskPatch, actor: str) -> Tas
     return get_task(session, task.id)
 
 
-def add_comment(session: Session, task: Task, actor: str, body: str) -> Task:
-    session.add(Comment(task_id=task.id, author=actor, body=body))
-    session.add(TaskEvent(task_id=task.id, actor=actor, event_type="COMMENTED"))
-    session.flush()
-    return get_task(session, task.id)
-
-
 def complete_task(session: Session, task: Task, actor: str, summary: str) -> Task:
+    if task.status == Status.DONE:
+        raise Conflict("Task is already completed")
     task.status = Status.DONE
     task.completed_at = datetime.now(UTC)
     session.add(Comment(task_id=task.id, author=actor, body=summary))
@@ -175,6 +173,12 @@ def complete_task(session: Session, task: Task, actor: str, summary: str) -> Tas
         )
     session.flush()
     return get_task(session, task.id)
+
+
+def delete_task(session: Session, task: Task) -> None:
+    if task.status == Status.DONE:
+        raise Conflict("Completed tasks are immutable; create a follow-up task")
+    session.delete(task)
 
 
 def list_tasks(

@@ -9,7 +9,8 @@ FROM python:3.12.11-slim-bookworm AS runtime
 ENV PATH="/app/.venv/bin:$PATH" TASKRELAY_DATABASE_URL="sqlite:////data/workspace.db"
 WORKDIR /app
 RUN pip install --no-cache-dir uv==0.12.10
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md alembic.ini ./
+COPY migrations/ migrations/
 COPY src/ src/
 COPY --from=frontend /build/src/taskrelaymcp/static src/taskrelaymcp/static
 RUN uv sync --frozen --no-dev && mkdir /data && chown -R 10001:10001 /app /data

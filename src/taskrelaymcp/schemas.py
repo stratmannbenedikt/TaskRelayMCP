@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from taskrelaymcp.models import Priority, Status
+from taskrelaymcp.models import Priority
 
 
 class ProjectCreate(BaseModel):
@@ -50,20 +50,12 @@ class TaskCreate(BaseModel):
 
 
 class TaskPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     title: str | None = Field(default=None, min_length=1, max_length=240)
     description: str | None = None
-    status: Status | None = None
     priority: Priority | None = None
     target_project: str | None = None
     tags: list[str] | None = None
-    assigned_agent: str | None = None
-
-    @field_validator("status")
-    @classmethod
-    def require_semantic_completion(cls, value: Status | None) -> Status | None:
-        if value == Status.DONE:
-            raise ValueError("Use complete_task so completion has a summary and notification")
-        return value
 
     @field_validator("tags")
     @classmethod
@@ -71,10 +63,6 @@ class TaskPatch(BaseModel):
         if values is None:
             return None
         return sorted({value.strip().lower() for value in values if value.strip()})
-
-
-class CommentCreate(BaseModel):
-    body: str = Field(min_length=1)
 
 
 class CompleteTask(BaseModel):
@@ -97,14 +85,3 @@ class TaskOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None
-
-
-class NotificationOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: int
-    project_id: int
-    task_id: int
-    type: str
-    message: str
-    created_at: datetime
-    read_at: datetime | None

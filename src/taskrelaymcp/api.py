@@ -9,11 +9,9 @@ from sqlalchemy.orm import Session
 
 from taskrelaymcp.auth import CurrentPrincipal, Writer
 from taskrelaymcp.db import session_scope
-from taskrelaymcp.models import Notification, Project, Status, Tag
+from taskrelaymcp.models import Project, Status, Tag
 from taskrelaymcp.schemas import (
-    CommentCreate,
     CompleteTask,
-    NotificationOut,
     ProjectCreate,
     ProjectOut,
     ProjectPatch,
@@ -23,8 +21,8 @@ from taskrelaymcp.schemas import (
     TaskPatch,
 )
 from taskrelaymcp.services import (
+    Conflict,
     NotFound,
-    add_comment,
     complete_task,
     create_project,
     create_task,
@@ -35,6 +33,9 @@ from taskrelaymcp.services import (
     patch_task,
     project_by_key,
     task_dict,
+)
+from taskrelaymcp.services import (
+    delete_task as remove_task,
 )
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -53,8 +54,8 @@ def missing(exc: NotFound) -> HTTPException:
 
 
 @router.get("/projects", response_model=list[ProjectSummaryOut])
-def projects(_: CurrentPrincipal, db: DB) -> list[dict]:
-    return list_project_summaries(db)
+def projects(_: CurrentPrincipal, db: DB, include_archived: bool = False) -> list[dict]:
+    return list_project_summaries(db, include_archived)
 
 
 @router.post("/projects", response_model=ProjectOut, status_code=201)
@@ -91,9 +92,9 @@ def tasks(
 
 
 @router.post("/tasks", response_model=TaskOut, status_code=201)
-def add_task(data: TaskCreate, principal: Writer, db: DB) -> dict:
+def add_task(data: TaskCreate, _: Writer, db: DB) -> dict:
     try:
-        return task_dict(create_task(db, data, principal.name))
+        return task_dict(create_task(db, data, "human"))
     except NotFound as exc:
         raise missing(exc) from exc
 
@@ -107,61 +108,34 @@ def task(task_id: int, _: CurrentPrincipal, db: DB) -> dict:
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskOut)
-def update_task(task_id: int, data: TaskPatch, principal: Writer, db: DB) -> dict:
+def update_task(task_id: int, data: TaskPatch, _: Writer, db: DB) -> dict:
     try:
-        return task_dict(patch_task(db, get_task(db, task_id), data, principal.name))
+        return task_dict(patch_task(db, get_task(db, task_id), data, "human"))
     except NotFound as exc:
         raise missing(exc) from exc
+    except Conflict as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.delete("/tasks/{task_id}", status_code=204)
 def delete_task(task_id: int, _: Writer, db: DB) -> Response:
     try:
-        db.delete(get_task(db, task_id))
+        remove_task(db, get_task(db, task_id))
     except NotFound as exc:
         raise missing(exc) from exc
+    except Conflict as exc:
+        raise HTTPException(409, str(exc)) from exc
     return Response(status_code=204)
 
 
-@router.post("/tasks/{task_id}/comments", response_model=TaskOut)
-def comment(task_id: int, data: CommentCreate, principal: Writer, db: DB) -> dict:
-    try:
-        return task_dict(add_comment(db, get_task(db, task_id), principal.name, data.body))
-    except NotFound as exc:
-        raise missing(exc) from exc
-
-
 @router.post("/tasks/{task_id}/complete", response_model=TaskOut)
-def finish(task_id: int, data: CompleteTask, principal: Writer, db: DB) -> dict:
+def finish(task_id: int, data: CompleteTask, _: Writer, db: DB) -> dict:
     try:
-        return task_dict(complete_task(db, get_task(db, task_id), principal.name, data.summary))
+        return task_dict(complete_task(db, get_task(db, task_id), "human", data.summary))
     except NotFound as exc:
         raise missing(exc) from exc
-
-
-@router.get("/notifications", response_model=list[NotificationOut])
-def notifications(_: CurrentPrincipal, db: DB, project: str, unread_only: bool = True) -> list[Notification]:
-    try:
-        project_id = project_by_key(db, project).id
-    except NotFound as exc:
-        raise missing(exc) from exc
-    statement = (
-        select(Notification).where(Notification.project_id == project_id).order_by(Notification.created_at.desc())
-    )
-    if unread_only:
-        statement = statement.where(Notification.read_at.is_(None))
-    return list(db.scalars(statement))
-
-
-@router.patch("/notifications/{notification_id}", response_model=NotificationOut)
-def read_notification(notification_id: int, _: Writer, db: DB) -> Notification:
-    from datetime import UTC, datetime
-
-    notification = db.get(Notification, notification_id)
-    if not notification:
-        raise HTTPException(404, "Notification not found")
-    notification.read_at = datetime.now(UTC)
-    return notification
+    except Conflict as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.get("/tags", response_model=list[str])

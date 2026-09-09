@@ -17,8 +17,9 @@
 
 ## Features
 
-- Focused projects with only `TODO` and `DONE` task states.
-- Browser UI that refreshes every five seconds while unlocked and on window focus.
+- Create, edit, archive, and unarchive focused projects; project keys are immutable.
+- Tasks have only `TODO` and immutable `DONE` states. Completing requires a summary; follow-up work is a new task.
+- Browser UI refreshes every five seconds while unlocked and on window focus, with browser-local project activity indicators.
 - Semantic MCP tools for agent collaboration.
 - SQLite persistence in a Docker named volume.
 
@@ -71,13 +72,11 @@ docker compose up -d
 
 The service binds to `127.0.0.1:8080`. Put a TLS-terminating reverse proxy in front of it before remote access; never send bearer tokens over plaintext HTTP.
 
-It defaults to `ghcr.io/stratmannbenedikt/taskrelaymcp:latest`. Pin a release instead when desired:
+It defaults to the public `ghcr.io/stratmannbenedikt/taskrelaymcp:latest` image. After publishing the `v0.2.0` tag, pin it with:
 
 ```bash
-TASKRELAY_IMAGE=ghcr.io/stratmannbenedikt/taskrelaymcp:0.1.0 docker compose up -d
+TASKRELAY_IMAGE=ghcr.io/stratmannbenedikt/taskrelaymcp:0.2.0 docker compose up -d
 ```
-
-If the package is not pullable publicly after publishing, make it public in its GitHub package settings; repository/package visibility defaults may not expose it.
 
 For local source builds only, use the unchanged development stack. It has a known loopback-only test token and is not the production Compose file:
 
@@ -122,7 +121,7 @@ opencode
 
 The `taskrelay` MCP tools use `taskrelaymcp` as their Home Project. Tell agents to call `get_notifications()` and `get_my_tasks()` at session start, summarize outstanding work, and ask before beginning.
 
-Tasks are only `TODO` or `DONE`; use tags for blocked work. `complete_task(summary)` completes a task. `start_task` remains for compatibility and keeps a task `TODO` rather than introducing an in-progress state. Cross-project completion adds a completion comment/event and notifies the task's origin project.
+Tokens grant workspace access (`READ` or `READ_WRITE`), not agent identity. MCP writes are audited as `project:<X-Home-Project>` and derive their origin project from that header; browser/REST writes are audited as `human`. Tasks are only `TODO` or `DONE`; use tags for blocked work. `complete_task(summary)` completes a task permanently and records its summary/activity. Cross-project completion creates the retained `TASK_COMPLETED` notification for the origin project.
 
 ## MCP tools
 
@@ -133,14 +132,15 @@ Tasks are only `TODO` or `DONE`; use tags for blocked work. `complete_task(summa
 | `get_task` | Read one task |
 | `create_task` | Create a task for the Home Project |
 | `update_task` | Update a task |
-| `start_task` | Keep a task in `TODO` for compatibility |
 | `complete_task` | Complete a task with a summary |
-| `get_notifications` | Read notifications |
+| `get_notifications` | Consume unread Home Project notifications (or read history with `unread_only=false`) |
 | `search_tasks` | Search tasks |
+
+The MCP server also publishes `taskrelay://guide`, a Markdown resource containing identity, lifecycle, and session-start guidance. Server initialization instructions direct clients to it. This is the portable MCP mechanism: Agent Skills remain a client-side convention and are not installed automatically by the server.
 
 ## Development and persistence
 
-The single image serves the SPA, REST API, and `/mcp/` on port 8080. The `taskrelay-data` named volume stores `/data/workspace.db`, avoiding host-directory permissions with the non-root container. SQLite uses foreign keys and WAL.
+The single image serves the SPA, REST API, and `/mcp/` on port 8080. The `taskrelay-data` named volume stores `/data/workspace.db`, avoiding host-directory permissions with the non-root container. SQLite uses foreign keys and WAL. Normal application startup is the supported upgrade path: it runs Alembic and safely adopts an unversioned database only when it exactly matches the frozen v0.1 schema signature (tables, columns, constraints, and indexes), then stamps explicit baseline `0001_v01_baseline` before upgrading. Partial or unrelated-table databases are rejected. Use `uv run alembic upgrade head` only for databases already managed by Alembic.
 
 Create a consistent online backup and copy it out:
 
@@ -149,11 +149,11 @@ docker compose exec taskrelay python -c "import sqlite3; s=sqlite3.connect('/dat
 docker cp "$(docker compose ps -q taskrelay):/data/workspace.backup.db" ./workspace.backup.db
 ```
 
-V1 creates the empty schema at startup; add Alembic before the first schema-changing production upgrade.
+The UI never reads or consumes agent notifications. Its “New activity” project indicators are stored only in the browser's localStorage: the first visit establishes a baseline, opening a project marks its current activity as seen, and later activity advances show the indicator.
 
 ### Release images
 
-GitHub Actions checks Python formatting, linting, tests, and the frontend build on pull requests. After quality passes, it builds the Dockerfile for `linux/amd64`; non-PR runs publish to GHCR with the lowercase repository name. Pushes to `main` publish `main`, a SHA tag, and `latest`; a version tag such as `v0.1.0` publishes semantic version tags and a SHA tag. `latest` is published only from the default branch. All workflow actions are pinned to immutable commits.
+GitHub Actions checks Python formatting, linting, tests, and the frontend build on pull requests. After quality passes, it builds the Dockerfile for `linux/amd64`; non-PR runs publish to GHCR with the lowercase repository name. Pushes to `main` publish `main`, a SHA tag, and `latest`; a version tag such as `vX.Y.Z` publishes semantic version tags and a SHA tag. `latest` is published only from the default branch. All workflow actions are pinned to immutable commits.
 
 ## Non-goals
 

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from taskrelaymcp.config import Permission, Principal, authenticate
 from taskrelaymcp.db import session_scope
@@ -27,7 +28,48 @@ from taskrelaymcp.services import (
     task_dict,
 )
 
-mcp = FastMCP("TaskRelay", instructions="Small shared task workspace. Home project is supplied by X-Home-Project.")
+TASKRELAY_GUIDE = """# TaskRelay agent guide
+
+TaskRelay is a small shared workspace for work crossing projects, sessions, or agents.
+
+## Identity and lifecycle
+
+- The bearer token grants workspace access; `X-Home-Project` identifies your project.
+- Tasks are either `TODO` or immutable `DONE`. Create a new task for follow-up work.
+- The server derives an MCP-created task's origin from your Home Project.
+
+## Session workflow
+
+1. Call `get_notifications()` once; it consumes unread completion notifications for your Home Project.
+2. Call `get_my_tasks(status="TODO")` and briefly offer relevant work to the user.
+3. Do not begin a task without user direction.
+4. Use `create_task()` when work should survive the current session.
+   Set `target_project` only for cross-project work and include standalone context.
+5. Use `update_task()` only while a task is TODO.
+6. Use `complete_task(task_id, summary)` only after verification; include concise evidence in the summary.
+
+Use `search_tasks()` before creating likely duplicate work.
+Do not use TaskRelay as a chat system, document store, or project-management suite.
+"""
+
+mcp = FastMCP(
+    "TaskRelay",
+    instructions=(
+        "TaskRelay coordinates TODO/DONE work using the X-Home-Project identity. "
+        "Read the taskrelay://guide resource before first use, then call get_notifications() and get_my_tasks()."
+    ),
+)
+
+
+@mcp.resource(
+    "taskrelay://guide",
+    name="taskrelay-agent-guide",
+    title="TaskRelay Agent Guide",
+    description="Usage, identity, lifecycle, and session-start guidance for TaskRelay agents.",
+    mime_type="text/markdown",
+)
+def taskrelay_guide() -> str:
+    return TASKRELAY_GUIDE
 
 
 def context(write: bool = False) -> tuple[Principal, str]:
@@ -84,7 +126,7 @@ def create_task(
     tags: list[str] | None = None,
     assigned_agent: str | None = None,
 ) -> dict:
-    principal, home = context(write=True)
+    _, home = context(write=True)
     with session_scope() as db:
         data = TaskCreate(
             title=title,
@@ -94,7 +136,7 @@ def create_task(
             tags=tags or [],
             assigned_agent=assigned_agent,
         )
-        return task_dict(create(db, data, principal.name, forced_origin=home))
+        return task_dict(create(db, data, f"project:{home}", forced_origin=home))
 
 
 @mcp.tool
@@ -102,45 +144,50 @@ def update_task(
     task_id: int,
     title: str | None = None,
     description: str | None = None,
-    status: str | None = None,
     priority: str | None = None,
     target_project: str | None = None,
     tags: list[str] | None = None,
-    assigned_agent: str | None = None,
 ) -> dict:
-    principal, _ = context(write=True)
+    _, home = context(write=True)
     values = {
-        key: value for key, value in locals().items() if key not in {"task_id", "principal", "_"} and value is not None
+        key: value for key, value in locals().items() if key not in {"task_id", "home", "_"} and value is not None
     }
     with session_scope() as db:
-        return task_dict(patch_task(db, fetch_task(db, task_id), TaskPatch(**values), principal.name))
-
-
-@mcp.tool
-def start_task(task_id: int) -> dict:
-    principal, _ = context(write=True)
-    with session_scope() as db:
-        return task_dict(patch_task(db, fetch_task(db, task_id), TaskPatch(status=Status.TODO), principal.name))
+        return task_dict(patch_task(db, fetch_task(db, task_id), TaskPatch(**values), f"project:{home}"))
 
 
 @mcp.tool
 def complete_task(task_id: int, summary: str) -> dict:
-    principal, _ = context(write=True)
+    _, home = context(write=True)
     with session_scope() as db:
-        return task_dict(complete(db, fetch_task(db, task_id), principal.name, summary))
+        return task_dict(complete(db, fetch_task(db, task_id), f"project:{home}", summary))
 
 
 @mcp.tool
-def get_notifications(unread_only: bool = True) -> list[dict]:
+def get_notifications(unread_only: bool = True, limit: Annotated[int, Field(ge=1, le=200)] = 100) -> list[dict]:
     _, home = context()
     with session_scope() as db:
         project = project_by_key(db, home)
         statement = (
-            select(Notification).where(Notification.project_id == project.id).order_by(Notification.created_at.desc())
+            select(Notification)
+            .where(Notification.project_id == project.id)
+            .order_by(Notification.created_at.desc())
+            .limit(limit)
         )
         if unread_only:
             statement = statement.where(Notification.read_at.is_(None))
-        return [
+        notifications = list(db.scalars(statement))
+        if unread_only:
+            claimed: list[Notification] = []
+            for item in notifications:
+                if db.execute(
+                    update(Notification)
+                    .where(Notification.id == item.id, Notification.read_at.is_(None))
+                    .values(read_at=datetime.now(UTC))
+                ).rowcount:
+                    claimed.append(item)
+            notifications = claimed
+        result = [
             {
                 "id": item.id,
                 "task_id": item.task_id,
@@ -148,8 +195,9 @@ def get_notifications(unread_only: bool = True) -> list[dict]:
                 "message": item.message,
                 "created_at": item.created_at,
             }
-            for item in db.scalars(statement)
+            for item in notifications
         ]
+        return result
 
 
 @mcp.tool
