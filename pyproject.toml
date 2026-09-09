@@ -1,0 +1,38 @@
+[project]
+name = "taskrelaymcp"
+version = "0.1.0"
+description = "A small shared task workspace for humans and MCP agents"
+readme = "README.md"
+authors = [
+    { name = "Benedikt Stratmann", email = "benedikt.stratmann@iosb.fraunhofer.de" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.116,<1",
+    "fastmcp>=4.0.3",
+    "sqlalchemy>=2.0,<3",
+    "uvicorn[standard]>=0.35,<1",
+]
+
+[project.scripts]
+taskrelaymcp = "taskrelaymcp:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28,<1",
+    "pytest>=8,<9",
+    "ruff>=0.12,<1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

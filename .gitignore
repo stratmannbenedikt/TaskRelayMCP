@@ -151,6 +151,10 @@ activemq-data/
 .env
 .envrc
 .venv
+data/
+frontend/node_modules/
+*.tsbuildinfo
+src/taskrelaymcp/static/
 env/
 venv/
 ENV/
@@ -216,3 +220,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+.opencode/

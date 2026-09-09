@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "taskrelay": {
+      "type": "remote",
+      "url": "http://localhost:8080/mcp/",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer taskrelay-local-dev",
+        "X-Home-Project": "taskrelaymcp"
+      }
+    }
+  },
+  "agent": {
+    "architect": {
+      "tools": {
+        "taskrelay_*": true
+      }
+    }
+  }
+}

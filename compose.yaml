@@ -1,0 +1,13 @@
+services:
+  taskrelay:
+    image: ${TASKRELAY_IMAGE:-ghcr.io/stratmannbenedikt/taskrelaymcp:latest}
+    restart: unless-stopped
+    environment:
+      TASKRELAY_TOKENS: ${TASKRELAY_TOKENS:?Set TASKRELAY_TOKENS}
+    volumes:
+      - taskrelay-data:/data
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  taskrelay-data:
