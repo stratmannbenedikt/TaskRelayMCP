@@ -8,8 +8,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from taskrelaymcp.api import router
-from taskrelaymcp.config import authenticate
-from taskrelaymcp.db import init_db
+from taskrelaymcp.auth import authenticate_mcp
+from taskrelaymcp.db import init_db, session_scope
 from taskrelaymcp.mcp_server import mcp
 
 mcp_app = mcp.http_app(path="/", stateless_http=True)
@@ -22,13 +22,15 @@ async def lifespan(app: FastAPI):
         yield
 
 
-app = FastAPI(title="TaskRelay", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="TaskRelay", version="0.5.0", lifespan=lifespan)
 
 
 @app.middleware("http")
 async def protect_mcp(request: Request, call_next):
-    if request.url.path.startswith("/mcp") and not authenticate(request.headers.get("authorization")):
-        return JSONResponse({"detail": "Invalid bearer token"}, status_code=401)
+    if request.url.path.startswith("/mcp"):
+        with session_scope() as db:
+            if not authenticate_mcp(db, request.headers.get("authorization")):
+                return JSONResponse({"detail": "Invalid or revoked MCP key"}, status_code=401)
     return await call_next(request)
 
 
@@ -48,7 +50,9 @@ def missing_api(path: str) -> JSONResponse:
 
 dist = Path(__file__).parent / "static"
 if dist.exists():
-    app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+    assets = dist / "assets"
+    if assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets), name="assets")
 
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str) -> FileResponse:

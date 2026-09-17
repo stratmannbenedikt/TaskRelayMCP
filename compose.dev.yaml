@@ -2,7 +2,11 @@ services:
   taskrelay:
     build: .
     environment:
-      TASKRELAY_TOKENS: taskrelay-local-dev:READ_WRITE
+      TASKRELAY_ADMIN_USERNAME: admin
+      TASKRELAY_ADMIN_PASSWORD: taskrelay-local-password
+      TASKRELAY_ADMIN_DISPLAY_NAME: Local Administrator
+      TASKRELAY_SECURE_COOKIES: "false"
+      TASKRELAY_PUBLIC_ORIGIN: http://localhost:8080
     volumes:
       - taskrelay-dev-data:/data
     ports:

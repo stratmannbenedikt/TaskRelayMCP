@@ -49,6 +49,7 @@ coverage.xml
 *.py.cover
 .hypothesis/
 .pytest_cache/
+.playwright-mcp
 cover/
 
 # Translations
@@ -153,6 +154,12 @@ activemq-data/
 .venv
 data/
 frontend/node_modules/
+frontend/.angular/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/e2e/.auth/
+taskrelay-playwright.db*
 *.tsbuildinfo
 src/taskrelaymcp/static/
 env/
@@ -221,4 +228,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-.opencode/
+.opencode/*
+!.opencode/skills/
+!.opencode/skills/**

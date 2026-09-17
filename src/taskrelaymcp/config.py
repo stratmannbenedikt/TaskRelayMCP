@@ -2,45 +2,61 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from enum import StrEnum
-from secrets import compare_digest
+from urllib.parse import urlsplit
 
 
-class Permission(StrEnum):
-    READ = "READ"
-    READ_WRITE = "READ_WRITE"
+@dataclass(frozen=True)
+class BootstrapAdmin:
+    username: str
+    display_name: str
+    password: str
 
 
 @dataclass(frozen=True)
 class Principal:
-    name: str
-    permission: Permission
+    user_id: int
+    username: str
+    is_admin: bool
+    channel: str
+    mcp_key_id: int | None = None
+    mcp_key_name: str | None = None
+    cookie_authenticated: bool = False
+
+    @property
+    def actor(self) -> str:
+        return self.username if self.channel == "WEB" else f"{self.username} via {self.mcp_key_name}"
 
 
 def database_url() -> str:
     return os.getenv("TASKRELAY_DATABASE_URL", "sqlite:////data/workspace.db")
 
 
-def configured_tokens() -> dict[str, Principal]:
-    """Parse TASKRELAY_TOKENS as token:permission entries separated by commas."""
-    result: dict[str, Principal] = {}
-    for index, entry in enumerate(filter(None, os.getenv("TASKRELAY_TOKENS", "").split(",")), 1):
-        token, separator, raw_permission = entry.rpartition(":")
-        if not separator or not token:
-            raise RuntimeError("TASKRELAY_TOKENS entries must be token:READ or token:READ_WRITE")
-        try:
-            permission = Permission(raw_permission)
-        except ValueError as exc:
-            raise RuntimeError(f"Invalid permission in TASKRELAY_TOKENS entry {index}") from exc
-        result[token] = Principal(name=f"token-{index}", permission=permission)
-    return result
+def bootstrap_admin() -> BootstrapAdmin:
+    username = os.getenv("TASKRELAY_ADMIN_USERNAME", "").strip().lower()
+    password = os.getenv("TASKRELAY_ADMIN_PASSWORD", "")
+    display_name = os.getenv("TASKRELAY_ADMIN_DISPLAY_NAME", "Administrator").strip()
+    if not username or not password:
+        raise RuntimeError("TASKRELAY_ADMIN_USERNAME and TASKRELAY_ADMIN_PASSWORD are required")
+    return BootstrapAdmin(username, display_name or username, password)
 
 
-def authenticate(authorization: str | None) -> Principal | None:
-    if not authorization or not authorization.startswith("Bearer "):
+def secure_cookies() -> bool:
+    return os.getenv("TASKRELAY_SECURE_COOKIES", "true").lower() not in {"0", "false", "no"}
+
+
+def public_origin() -> str | None:
+    origin = os.getenv("TASKRELAY_PUBLIC_ORIGIN", "").strip().rstrip("/")
+    if not origin:
         return None
-    supplied = authorization.removeprefix("Bearer ")
-    for token, principal in configured_tokens().items():
-        if compare_digest(supplied, token):
-            return principal
-    return None
+    parsed = urlsplit(origin)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+        or parsed.username
+        or parsed.password
+    ):
+        raise RuntimeError("TASKRELAY_PUBLIC_ORIGIN must be an http(s) origin without a path")
+    return origin

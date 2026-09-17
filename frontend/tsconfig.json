@@ -1,17 +1,7 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "moduleResolution": "Bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-    "strict": true
+    "target": "ES2022", "useDefineForClassFields": false, "module": "preserve", "lib": ["ES2022", "dom"],
+    "strict": true, "skipLibCheck": true, "isolatedModules": true, "moduleResolution": "bundler", "importHelpers": true
   },
-  "include": ["src"]
+  "angularCompilerOptions": { "strictTemplates": true, "strictInjectionParameters": true }
 }

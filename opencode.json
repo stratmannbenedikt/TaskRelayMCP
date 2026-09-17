@@ -6,15 +6,37 @@
       "url": "http://localhost:8080/mcp/",
       "enabled": true,
       "headers": {
-        "Authorization": "Bearer taskrelay-local-dev",
+        "Authorization": "Bearer {env:TASKRELAY_MCP_KEY}",
         "X-Home-Project": "taskrelaymcp"
       }
+    },
+    "ticktick": {
+      "type": "remote",
+      "url": "https://mcp.ticktick.com",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:MCP_TICKTICK_API_KEY}"
+      }
+    },
+    "playwright": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@playwright/mcp@0.0.80",
+        "--browser=chromium",
+        "--headless",
+        "--isolated"
+      ],
+      "enabled": true
     }
   },
   "agent": {
     "architect": {
       "tools": {
-        "taskrelay_*": true
+        "taskrelay_*": true,
+        "ticktick_*": true,
+        "playwright_*": true
       }
     }
   }

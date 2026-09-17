@@ -1,6 +1,6 @@
 [project]
 name = "taskrelaymcp"
-version = "0.2.0"
+version = "0.5.0"
 description = "A small shared task workspace for humans and MCP agents"
 readme = "README.md"
 authors = [
