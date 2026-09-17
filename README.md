@@ -107,8 +107,10 @@ Pre-0.4 development databases and volumes must be reset once before starting v0.
 uv sync --frozen
 uv run ruff format --check .
 uv run ruff check .
+npm --prefix frontend ci
+npm --prefix frontend run build
+npm --prefix frontend test -- --watch=false
 uv run pytest -q
-cd frontend && npm ci && npm run build && npm test -- --no-watch
 ```
 
 ## Persistence and backup

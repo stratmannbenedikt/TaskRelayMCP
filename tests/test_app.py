@@ -201,7 +201,10 @@ def test_spa_serves_root_hashed_assets_without_assets_directory(client: TestClie
     static = Path(__file__).parents[1] / "src/taskrelaymcp/static"
     assert not (static / "assets").exists()
     index = client.get("/")
-    asset = next(static.glob("main-*.js"))
+    assets = list(static.glob("main-*.js"))
+    if not assets:
+        pytest.skip("SPA bundle missing; run `npm --prefix frontend run build`")
+    asset = assets[0]
     assert index.status_code == 200 and asset.name in index.text
     assert client.get(f"/{asset.name}").status_code == 200
 
